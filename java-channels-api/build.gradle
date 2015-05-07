@@ -1,0 +1,56 @@
+apply plugin: 'maven'
+ext.artifactId = "java-channels"
+
+task sourceJar(type: Jar) {
+	classifier = 'sources'
+	from sourceSets.main.allJava
+}
+
+artifacts {
+	archives sourceJar
+}
+
+
+configurations {
+	deployerJars
+	provided
+}
+
+sourceSets {
+	main { compileClasspath += configurations.provided }
+}
+
+dependencies {
+	compile 'commons-io:commons-io:2.4'
+	compile 'org.apache.httpcomponents:httpclient:4.3.2'
+	compile 'commons-lang:commons-lang:2.6'
+	compile 'org.json:json:20090211'
+	deployerJars 'org.apache.maven.wagon:wagon-ssh:2.2'
+}
+
+
+install  {
+	repositories.mavenInstaller {
+		pom.artifactId = project.artifactId
+	}
+}
+
+uploadArchives {
+	repositories {
+		// Set mavenRepositoryUrl & mavenUserName inside gradle.properties
+		mavenDeployer {
+			configuration = configurations.deployerJars
+			pom.artifactId = project.artifactId
+			repository(url: mavenRepositoryUrl + '/releases') {
+				authentication(userName: mavenUserName)
+			}
+			snapshotRepository(url: mavenRepositoryUrl + '/snapshots') {
+				authentication(userName: mavenUserName)
+			}
+		}
+	}
+}
+
+eclipse.project {
+	name = 'java-channels-api'
+}

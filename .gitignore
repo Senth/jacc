@@ -1,4 +1,8 @@
-
+gradle.properties
+build
+/java-channels-api/build
+/java-channels-client-example/build
+/java-channels-gae-example/build
 /java-channels-api/target
 /java-channels-client-example/target
 /java-channels-gae-example/target

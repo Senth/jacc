@@ -1,0 +1,20 @@
+allprojects {
+	apply plugin: 'eclipse'
+	version = '0.2.0-SNAPSHOT'
+	group = 'edu.gvsu.cis.masl'
+
+	repositories {
+		mavenCentral()
+	}
+}
+
+subprojects {
+	apply plugin: 'java'
+	sourceCompatibility = 1.7
+	targetCompatibility = 1.7
+	[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+}
+
+eclipse.project {
+	name = 'java-channels'
+}
