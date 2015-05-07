@@ -1,0 +1,7 @@
+dependencies {
+	compile project(':java-channels-api')
+}
+
+eclipse.project {
+	name = 'java-channels-client-example'
+}

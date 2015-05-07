@@ -1,2 +1,1 @@
-include 'java-channels-api'
-// 'java-channels-client-example', 'java-channels-gae-example' 
+include 'java-channels-api', 'java-channels-client-example', 'java-channels-gae-example' 
