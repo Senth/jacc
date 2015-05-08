@@ -6,8 +6,8 @@ dependencies {
 	compile "com.google.gwt:gwt-user:$gwtVersion"
 	compile "net.kindleit:gae-runtime:$gaeVersion"
 	compile "javax.jdo:jdo2-api:2.3-eb"
-	compileTest 'junit:junit:4.7'
-	compileTest 'javax.validation:validation-api:1.0.0.GA'
+// 	compileTest 'junit:junit:4.7'
+// 	compileTest 'javax.validation:validation-api:1.0.0.GA'
 	runtime 'org.datanucleus:datanucleus-core:1.1.5'
 }
 
