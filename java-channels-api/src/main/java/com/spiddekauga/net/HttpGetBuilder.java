@@ -19,6 +19,7 @@ public class HttpGetBuilder {
 	 */
 	public HttpGetBuilder(String url) {
 		mBuilder.append(url);
+		mAddedParameter = (url.indexOf("?") != -1);
 	}
 
 	/**

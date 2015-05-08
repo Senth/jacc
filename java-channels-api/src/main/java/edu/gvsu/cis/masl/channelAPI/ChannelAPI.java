@@ -3,6 +3,7 @@ package edu.gvsu.cis.masl.channelAPI;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +42,7 @@ public class ChannelAPI {
 	private enum ReadyState {
 		CONNECTING,
 		OPEN,
+		ERROR,
 		CLOSING,
 		CLOSED
 	};
@@ -144,6 +146,7 @@ public class ChannelAPI {
 		} catch (JSONException e) {
 			System.out.println("Error: Parsing JSON");
 		}
+		connection.disconnect();
 
 		return token;
 	}
@@ -156,10 +159,14 @@ public class ChannelAPI {
 	 * @throws ChannelException
 	 */
 	public void open() throws IOException, ChannelException {
-		mReadyState = ReadyState.CONNECTING;
-		if (mBaseUrl.contains("localhost")) { // Local Development Mode
+		setReadyState(ReadyState.CONNECTING);
+
+		// Local Development Mode
+		if (mBaseUrl.contains("localhost")) {
 			connect(sendGet(getUrl("connect")));
-		} else { // Production - AppEngine Mode
+		}
+		// Production - AppEngine Mode
+		else {
 			initialize();
 			fetchSid();
 			connect();
@@ -361,7 +368,7 @@ public class ChannelAPI {
 			@Override
 			public void run() {
 				TalkMessageParser parser = null;
-				while (mReadyState.equals(ReadyState.OPEN)) {
+				while (getReadyState() == ReadyState.OPEN) {
 					if (parser == null) {
 						parser = repoll();
 						if (parser == null) {
@@ -388,7 +395,7 @@ public class ChannelAPI {
 			}
 		});
 
-		mReadyState = ReadyState.OPEN;
+		setReadyState(ReadyState.OPEN);
 		mtPoll.start();
 	}
 
@@ -447,12 +454,27 @@ public class ChannelAPI {
 	}
 
 	/**
+	 * Sets the ready state
+	 * @param readyState
+	 */
+	private synchronized void setReadyState(ReadyState readyState) {
+		mReadyState = readyState;
+	}
+
+	/**
+	 * @return current ready state
+	 */
+	private synchronized ReadyState getReadyState() {
+		return mReadyState;
+	}
+
+	/**
 	 * Close the Channel, Channel is gone from the server now, a new Channel is required
 	 * if you wish to reconnect, you can't re-use the old one
 	 * @throws IOException
 	 */
 	public void close() throws IOException {
-		mReadyState = ReadyState.CLOSING;
+		setReadyState(ReadyState.CLOSING);
 		disconnect(sendGet(getUrl("disconnect")));
 	}
 
@@ -494,16 +516,16 @@ public class ChannelAPI {
 	 * connect, the error is printed to the terminal and the connection is closed.
 	 * @param xhr
 	 */
-	private void connect(XHR xhr) {
+	private void connect(HttpNiceResponse xhr) {
 		if (xhr.isSuccess()) {
 			mClientId = xhr.getResponseText();
-			mReadyState = ReadyState.OPEN;
+			setReadyState(ReadyState.OPEN);
 			mChannelListener.onOpen();
 			poll();
 		} else {
-			mReadyState = ReadyState.CLOSING;
+			setReadyState(ReadyState.CLOSING);
 			mChannelListener.onError(xhr.getStatus(), xhr.getStatusText());
-			mReadyState = ReadyState.CLOSED;
+			setReadyState(ReadyState.CLOSED);
 			mChannelListener.onClose();
 		}
 	}
@@ -512,23 +534,23 @@ public class ChannelAPI {
 	 * Closing the channel
 	 * @param xhr
 	 */
-	private void disconnect(XHR xhr) {
-		mReadyState = ReadyState.CLOSED;
+	private void disconnect(HttpNiceResponse xhr) {
+		setReadyState(ReadyState.CLOSED);
 		mChannelListener.onClose();
 	}
 
 	/**
 	 * @param xhr
 	 */
-	private void forwardMessage(XHR xhr) {
+	private void forwardMessage(HttpNiceResponse xhr) {
 		if (xhr.isSuccess()) {
 			String data = StringUtils.chomp(xhr.getResponseText());
 			if (!StringUtils.isEmpty(data)) {
 				mChannelListener.onMessage(data);
 			}
-			poll();
 		} else {
 			mChannelListener.onError(xhr.getStatus(), xhr.getStatusText());
+			setReadyState(ReadyState.ERROR);
 		}
 	}
 
@@ -541,17 +563,16 @@ public class ChannelAPI {
 
 				@Override
 				public void run() {
-					XHR xhr = null;
-					try {
-						Thread.sleep(TIMEOUT_MS);
-						xhr = sendGet(getUrl("poll"));
-						mtPoll = null;
-						forwardMessage(xhr);
-					} catch (Exception e) {
-						mtPoll = null;
+					while (getReadyState() == ReadyState.OPEN) {
+						try {
+							HttpNiceResponse response = sendGet(getUrl("poll"));
+							forwardMessage(response);
+							Thread.sleep(TIMEOUT_MS);
+						} catch (Exception e) {
+							// Does nothing
+						}
 					}
 				}
-
 			});
 			mtPoll.start();
 		}
@@ -561,7 +582,7 @@ public class ChannelAPI {
 	 * Send Message On, If there is an error notify the channelListener!
 	 * @param xhr
 	 */
-	private void forwardSendComplete(XHR xhr) {
+	private void forwardSendComplete(HttpNiceResponse xhr) {
 		if (!xhr.isSuccess()) {
 			mChannelListener.onError(xhr.getStatus(), xhr.getStatusText());
 		}
@@ -575,7 +596,7 @@ public class ChannelAPI {
 	 * @throws IOException
 	 */
 	public boolean send(String message, String urlPattern) throws IOException {
-		if (mReadyState != ReadyState.OPEN) {
+		if (getReadyState() != ReadyState.OPEN) {
 			return false;
 		}
 		String url = mBaseUrl + urlPattern;
@@ -593,23 +614,25 @@ public class ChannelAPI {
 	 * @return XHR, nice responses from httpRequests
 	 * @throws IOException
 	 */
-	private XHR sendPost(String url, List<NameValuePair> params) throws IOException {
+	private HttpNiceResponse sendPost(String url, List<NameValuePair> params) throws IOException {
 		HttpClient sendClient = HttpClientBuilder.create().build();
 		UrlEncodedFormEntity entity = new UrlEncodedFormEntity(params, "UTF-8");
 		HttpPost httpPost = new HttpPost(url);
 		httpPost.setEntity(entity);
-		return new XHR(sendClient.execute(httpPost));
+		return new HttpNiceResponse(sendClient.execute(httpPost));
 	}
 
 	/**
-	 * Send an HTTPGET, convenience function
+	 * Send a HTTP GET request and get the response as a string
 	 * @param url
-	 * @return XHR, nice responses from httpRequests
+	 * @return nice response from a HTTP request
+	 * @throws MalformedURLException
 	 * @throws IOException
 	 */
-	private XHR sendGet(String url) throws IOException {
-		HttpGet httpGet = new HttpGet(url);
-		return new XHR(mHttpClient.execute(httpGet));
+	private HttpNiceResponse sendGet(String url) throws MalformedURLException, IOException {
+		HttpURLConnection connection = new HttpGetBuilder(url).build();
+		mHttpSession.connect(connection);
+		return new HttpNiceResponse(connection);
 	}
 
 	/**
