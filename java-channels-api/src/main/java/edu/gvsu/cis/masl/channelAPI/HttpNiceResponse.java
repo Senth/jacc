@@ -3,11 +3,7 @@ package edu.gvsu.cis.masl.channelAPI;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
-import org.apache.http.StatusLine;
 
 import com.spiddekauga.net.HttpResponseParser;
 
@@ -21,27 +17,17 @@ public class HttpNiceResponse {
 
 	/**
 	 * Handles the Response of a HttpRequest, grab data later by using Getters
-	 * @param response
-	 * @throws IOException
-	 */
-	@Deprecated
-	public HttpNiceResponse(HttpResponse response) throws IOException {
-		StatusLine statusLine = response.getStatusLine();
-		HttpEntity httpEntity = response.getEntity();
-		mStatus = statusLine.getStatusCode();
-		mStatusText = statusLine.getReasonPhrase();
-		mResponseText = IOUtils.toString(httpEntity.getContent(), "UTF-8");
-	}
-
-	/**
-	 * Handles the Response of a HttpRequest, grab data later by using Getters
 	 * @param connection HTTP connection
 	 * @throws IOException
 	 */
 	public HttpNiceResponse(HttpURLConnection connection) throws IOException {
-		mResponseText = HttpResponseParser.getStringResponse(connection);
 		mStatus = connection.getResponseCode();
 		mStatusText = connection.getResponseMessage();
+
+		// OK -> Get message
+		if (mStatus == HttpURLConnection.HTTP_OK) {
+			mResponseText = HttpResponseParser.getStringResponse(connection);
+		}
 	}
 
 	// @formatter:off
@@ -55,7 +41,7 @@ public class HttpNiceResponse {
 	 */
 	// @formatter:on
 	public String getStatusText() {
-		return this.mStatusText;
+		return mStatusText;
 	}
 
 	// @formatter:off
@@ -69,21 +55,21 @@ public class HttpNiceResponse {
 	 */
 	// @formatter:on
 	public int getStatus() {
-		return this.mStatus;
+		return mStatus;
 	}
 
 	/**
 	 * @return true on good connection
 	 */
 	public boolean isSuccess() {
-		return (this.mStatus == HttpStatus.SC_OK);
+		return (mStatus == HttpStatus.SC_OK);
 	}
 
 	/**
 	 * @return the message from the server
 	 */
 	public String getResponseText() {
-		return this.mResponseText;
+		return mResponseText;
 	}
 
 	/**

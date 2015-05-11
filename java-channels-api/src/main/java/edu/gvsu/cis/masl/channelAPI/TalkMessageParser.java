@@ -2,61 +2,70 @@ package edu.gvsu.cis.masl.channelAPI;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringReader;
-
-import org.apache.http.HttpResponse;
+import java.net.HttpURLConnection;
 
 import edu.gvsu.cis.masl.channelAPI.ChannelAPI.ChannelException;
 import edu.gvsu.cis.masl.channelAPI.ChannelAPI.InvalidMessageException;
 
 /**
  * Helper class for parsing talk messages. Again, this protocol has been
- * reverse-engineered so it doesn't have a lot of error checking and is generally
- * fairly lenient.
+ * reverse-engineered so it doesn't have a lot of error checking and is generally fairly
+ * lenient.
  */
 class TalkMessageParser {
-	private HttpResponse mHttpResponse;
+	private HttpURLConnection mConnection = null;
 	private BufferedReader mReader;
 
-	public TalkMessageParser(HttpResponse resp) throws ChannelException {
+
+	/**
+	 * Parses a Google Talk Message from an HTTP connection
+	 * @param connection
+	 * @throws ChannelException
+	 */
+	public TalkMessageParser(HttpURLConnection connection) throws ChannelException {
 		try {
-			mHttpResponse = resp;
-			InputStream ins = resp.getEntity().getContent();
-			mReader = new BufferedReader(new InputStreamReader(ins));
-		} catch (IllegalStateException e) {
-			throw new ChannelException(e);
+			mConnection = connection;
+			mReader = new BufferedReader(new InputStreamReader(mConnection.getInputStream()));
 		} catch (IOException e) {
 			throw new ChannelException(e);
 		}
 	}
 
+
+	/**
+	 * Get the google talk message
+	 * @return google talk message
+	 * @throws ChannelException
+	 */
 	public TalkMessage getMessage() throws ChannelException {
-		String submission = readSubmission();
-		if (submission == null) {
-			return null;
-		}
-
-		TalkMessage msg = new TalkMessage();
-
 		try {
-			msg.parse(new BufferedReader(new StringReader(submission)));
-		} catch (InvalidMessageException e) {
-			throw new ChannelException(e);
-		}
+			String submission = readSubmission();
+			if (submission == null) {
+				return null;
+			}
 
-		return msg;
+			TalkMessage msg = new TalkMessage();
+
+			try {
+				msg.parse(new BufferedReader(new StringReader(submission)));
+			} catch (InvalidMessageException e) {
+				throw new ChannelException(e);
+			}
+
+			close();
+			return msg;
+		} catch (ChannelException e) {
+			close();
+			throw e;
+		}
 	}
 
-	public void close() {
+	private void close() {
 		try {
 			mReader.close();
 		} catch (IOException e) {
-		}
-
-		if (mHttpResponse != null) {
-			ChannelAPI.consume(mHttpResponse.getEntity());
 		}
 	}
 

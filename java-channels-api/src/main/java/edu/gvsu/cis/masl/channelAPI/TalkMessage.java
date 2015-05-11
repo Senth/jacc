@@ -12,27 +12,49 @@ import edu.gvsu.cis.masl.channelAPI.ChannelAPI.InvalidMessageException;
  * (recursive) talk messages.
  */
 class TalkMessage {
+	/**
+	 * Types of messages
+	 */
 	public enum MessageEntryKind {
+		/** String message */
 		ME_STRING,
+		/** Number message */
 		ME_NUMBER,
+		/** Empty messaage */
 		ME_EMPTY,
+		/** Google talk message */
 		ME_TALKMESSAGE
 	}
 
 	private ArrayList<TalkMessage.TalkMessageEntry> mEntries;
 
+	/**
+	 * Create an empty talk message
+	 */
 	public TalkMessage() {
 		mEntries = new ArrayList<TalkMessage.TalkMessageEntry>();
 	}
 
+	/**
+	 * Create a talk message with the specified entries
+	 * @param entries
+	 */
 	private TalkMessage(ArrayList<TalkMessage.TalkMessageEntry> entries) {
 		mEntries = entries;
 	}
 
+	/**
+	 * @return all talk entries
+	 */
 	public List<TalkMessage.TalkMessageEntry> getEntries() {
 		return mEntries;
 	}
 
+	/**
+	 * Parse a stream for entries
+	 * @param reader
+	 * @throws InvalidMessageException
+	 */
 	public void parse(BufferedReader reader) throws InvalidMessageException {
 		try {
 			if (skipWhitespace(reader) != '[') {
@@ -133,19 +155,34 @@ class TalkMessage {
 		return -1;
 	}
 
+	/**
+	 * The actual Talk Message
+	 */
 	static class TalkMessageEntry {
-		TalkMessage.MessageEntryKind mKind;
-		Object mValue;
+		private TalkMessage.MessageEntryKind mKind;
+		private Object mValue;
 
+		/**
+		 * Construct message
+		 * @param kind
+		 * @param value
+		 */
 		public TalkMessageEntry(TalkMessage.MessageEntryKind kind, Object value) {
 			mKind = kind;
 			mValue = value;
 		}
 
+		/**
+		 * @return kind of message
+		 */
 		public TalkMessage.MessageEntryKind getKind() {
 			return mKind;
 		}
 
+		/**
+		 * @return string value of the message
+		 * @throws InvalidMessageException if the message isn't a string
+		 */
 		public String getStringValue() throws InvalidMessageException {
 			if (mKind == MessageEntryKind.ME_STRING) {
 				return (String) mValue;
@@ -154,6 +191,10 @@ class TalkMessage {
 			}
 		}
 
+		/**
+		 * @return number value of the message
+		 * @throws InvalidMessageException if the message isn't a number
+		 */
 		public long getNumberValue() throws InvalidMessageException {
 			if (mKind == MessageEntryKind.ME_NUMBER) {
 				return (Long) mValue;
@@ -162,6 +203,10 @@ class TalkMessage {
 			}
 		}
 
+		/**
+		 * @return message as google talk message
+		 * @throws InvalidMessageException if the message isn't a google talk message
+		 */
 		public TalkMessage getMessageValue() throws InvalidMessageException {
 			if (mKind == MessageEntryKind.ME_TALKMESSAGE) {
 				return (TalkMessage) mValue;

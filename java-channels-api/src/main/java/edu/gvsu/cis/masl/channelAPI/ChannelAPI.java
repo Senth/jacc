@@ -1,35 +1,23 @@
 package edu.gvsu.cis.masl.channelAPI;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URLEncoder;
-import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.RandomStringUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.utils.URLEncodedUtils;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.message.BasicNameValuePair;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import com.spiddekauga.net.HttpCookieStorage;
 import com.spiddekauga.net.HttpGetBuilder;
+import com.spiddekauga.net.HttpPostBuilder;
 import com.spiddekauga.net.HttpResponseParser;
-import com.spiddekauga.net.HttpSessionConnection;
 
 /**
  * API for interacating with Channels on a Google App Engine server.
@@ -62,10 +50,9 @@ public class ChannelAPI {
 	private long mMessageId = 1;
 	private ChannelService mChannelListener = new ChannelListener();
 	private ReadyState mReadyState = ReadyState.CLOSED;
-	private HttpClient mHttpClient = HttpClientBuilder.create().build();
 	private Thread mtPoll = null;
 
-	private HttpSessionConnection mHttpSession = new HttpSessionConnection();
+	private HttpCookieStorage mHttpSession = new HttpCookieStorage();
 
 	/**
 	 * Default Constructor
@@ -89,9 +76,8 @@ public class ChannelAPI {
 	 * @param channelService - An Implementation of the ChannelService class, this is
 	 *        where the function methods will get called when the server pushes data
 	 * @throws IOException JSON Related
-	 * @throws ClientProtocolException Connection Related
 	 */
-	public ChannelAPI(String URL, String channelKey, ChannelService channelService) throws IOException, ClientProtocolException {
+	public ChannelAPI(String URL, String channelKey, ChannelService channelService) throws IOException {
 		mClientId = null;
 		mBaseUrl = URL;
 		mRequestId = 0;
@@ -130,15 +116,14 @@ public class ChannelAPI {
 	 * @param key
 	 * @return String: Channel 'Token/ID'
 	 * @throws IOException
-	 * @throws ClientProtocolException
 	 */
-	private String createChannel(String key) throws IOException, ClientProtocolException {
+	private String createChannel(String key) throws IOException {
 		String token = "";
 
 		HttpGetBuilder builder = new HttpGetBuilder(mBaseUrl + "/token");
 		builder.addParameter("c", key);
 		HttpURLConnection connection = builder.build();
-		mHttpSession.connect(connection);
+//		mHttpSession.storeInitialCookies(connection);
 
 		try {
 			JSONObject json = new JSONObject(HttpResponseParser.getStringResponse(connection));
@@ -188,47 +173,46 @@ public class ChannelAPI {
 			xpc.put("ppu", mBaseUrl + CHANNEL_URL + "xpc_blank");
 
 		} catch (JSONException e1) {
-
+			// Does nothing
 		}
 
-		List<NameValuePair> params = new ArrayList<NameValuePair>();
-		params.add(new BasicNameValuePair("token", mChannelId));
-		params.add(new BasicNameValuePair("xpc", xpc.toString()));
+		HttpGetBuilder builder = new HttpGetBuilder(PROD_TALK_URL + "d");
+		builder.addParameter("token", mChannelId);
+		builder.addParameter("xpc", xpc.toString());
+		builder.setCookies(mHttpSession);
 
-		String initUri = PROD_TALK_URL + "d?" + URLEncodedUtils.format(params, "UTF-8");
-
-		HttpGet httpGet = new HttpGet(initUri);
 		try {
-			HttpResponse resp = mHttpClient.execute(httpGet);
-			if (resp.getStatusLine().getStatusCode() > 299) {
-				throw new ChannelException("Initialize failed: " + resp.getStatusLine());
-			}
+			HttpURLConnection connection = builder.build();
+			mHttpSession.storeInitialCookies(connection);
+			String response = HttpResponseParser.getStringResponse(connection);
 
-			String html = IOUtils.toString(resp.getEntity().getContent(), "UTF-8");
-			consume(resp.getEntity());
+			Pattern pattern = Pattern.compile("chat\\.WcsDataClient\\(([^\\)]+)\\)", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
+			Matcher matcher = pattern.matcher(response);
 
-			Pattern p = Pattern.compile("chat\\.WcsDataClient\\(([^\\)]+)\\)", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
-			Matcher m = p.matcher(html);
-			if (m.find()) {
-				String fields = m.group(1);
-				p = Pattern.compile("\"([^\"]*?)\"[\\s,]*", Pattern.MULTILINE);
-				m = p.matcher(fields);
+			if (matcher.find()) {
+				String fields = matcher.group(1);
+
+				pattern = Pattern.compile("\"([^\"]*?)\"[\\s,]*", Pattern.MULTILINE);
+				matcher = pattern.matcher(fields);
 
 				for (int i = 0; i < 7; i++) {
-					if (!m.find()) {
+					if (!matcher.find()) {
 						throw new ChannelException("Expected iteration #" + i + " to find something.");
 					}
 					if (i == 2) {
-						mClientId = m.group(1);
+						mClientId = matcher.group(1);
 					} else if (i == 3) {
-						mSessionId = m.group(1);
+						mSessionId = matcher.group(1);
 					} else if (i == 6) {
-						if (!mChannelId.equals(m.group(1))) {
+						if (!mChannelId.equals(matcher.group(1))) {
 							throw new ChannelException("Tokens do not match!");
 						}
 					}
 				}
 			}
+
+			connection.disconnect();
+
 		} catch (IOException e) {
 			throw new ChannelException(e);
 		}
@@ -239,23 +223,17 @@ public class ChannelAPI {
 	 * @throws ChannelException
 	 */
 	private void fetchSid() throws ChannelException {
+		HttpGetBuilder getBuilder = getBindUrl();
+		getBuilder.addParameter("CVER", "1");
 
-		String uri = getBindString(new BasicNameValuePair("CVER", "1"));
-
-		HttpPost httpPost = new HttpPost(uri);
-
-		List<NameValuePair> data = new ArrayList<NameValuePair>();
-		data.add(new BasicNameValuePair("count", "0"));
 		try {
-			httpPost.setEntity(new UrlEncodedFormEntity(data));
-		} catch (UnsupportedEncodingException e) {
+			HttpPostBuilder postBuilder = getBuilder.toPostBuilder();
+			postBuilder.setCookies(mHttpSession);
+			getBuilder = null;
+			postBuilder.addParameter("count", "0");
+			HttpURLConnection connection = postBuilder.build();
 
-		}
-
-		TalkMessageParser parser = null;
-		try {
-			HttpResponse resp = mHttpClient.execute(httpPost);
-			parser = new TalkMessageParser(resp);
+			TalkMessageParser parser = new TalkMessageParser(connection);
 			TalkMessage msg = parser.getMessage();
 
 			TalkMessage.TalkMessageEntry entry = msg.getEntries().get(0);
@@ -266,46 +244,36 @@ public class ChannelAPI {
 			}
 
 			mSid = entries.get(1).getStringValue();
-		} catch (ClientProtocolException e) {
-			throw new ChannelException(e);
-		} catch (IOException e) {
-			throw new ChannelException(e);
-		} catch (InvalidMessageException e) {
-			throw new ChannelException(e);
-		} finally {
-			if (parser != null) {
-				parser.close();
-			}
+
+			connection.disconnect();
+
+		} catch (IOException | InvalidMessageException e) {
+			new ChannelException(e);
 		}
 	}
 
 	/**
 	 * We need to make this "connect" request to set up the binding.
+	 * @throws ChannelException
 	 */
 	private void connect() throws ChannelException {
-		String uri = getBindString(new BasicNameValuePair("AID", Long.toString(mMessageId)), new BasicNameValuePair("CVER", "1"));
+		HttpGetBuilder getBuilder = getBindUrl();
+		getBuilder.addParameter("AID", mMessageId);
+		getBuilder.addParameter("CVER", "1");
+		getBuilder.setCookies(mHttpSession);
 
-		List<NameValuePair> params = new ArrayList<NameValuePair>();
-		params.add(new BasicNameValuePair("count", "1"));
-		params.add(new BasicNameValuePair("ofs", "0"));
-		params.add(new BasicNameValuePair("req0_m", "[\"connect-add-client\"]"));
-		params.add(new BasicNameValuePair("req0_c", mClientId));
-		params.add(new BasicNameValuePair("req0__sc", "c"));
-
-		HttpEntity entity = null;
 		try {
-			entity = new UrlEncodedFormEntity(params);
-		} catch (UnsupportedEncodingException e) {
+			HttpPostBuilder postBuilder = getBuilder.toPostBuilder();
+			postBuilder.addParameter("count", "1");
+			postBuilder.addParameter("ofs", "0");
+			postBuilder.addParameter("req0_m", "[\"connect-add-client\"]");
+			postBuilder.addParameter("req0_c", mClientId);
+			postBuilder.addParameter("req0__sc", "c");
 
-		}
+			HttpURLConnection connection = postBuilder.build();
+			connection.connect();
+			connection.disconnect();
 
-		HttpPost httpPost = new HttpPost(uri);
-		httpPost.setEntity(entity);
-		try {
-			HttpResponse resp = mHttpClient.execute(httpPost);
-			consume(resp.getEntity());
-		} catch (ClientProtocolException e) {
-			throw new ChannelException(e);
 		} catch (IOException e) {
 			throw new ChannelException(e);
 		}
@@ -314,29 +282,27 @@ public class ChannelAPI {
 	}
 
 	/**
-	 * Gets the URL to the "/bind" endpoint.
-	 * @param extraParams
-	 * @return
+	 * Get the URL to the "/bind" endpoint.
+	 * @return HttpGetBuilder with the appropriate GET parameters set
 	 */
-	private String getBindString(NameValuePair... extraParams) {
-		List<NameValuePair> params = new ArrayList<NameValuePair>();
-		params.add(new BasicNameValuePair("token", mChannelId));
-		params.add(new BasicNameValuePair("gsessionid", mSessionId));
-		params.add(new BasicNameValuePair("clid", mClientId));
-		params.add(new BasicNameValuePair("prop", "data"));
-		params.add(new BasicNameValuePair("zx", RandomStringUtils.random(12, true, false)));
-		params.add(new BasicNameValuePair("t", "1"));
-		if (mSid != null && mSid != "") {
-			params.add(new BasicNameValuePair("SID", mSid));
-		}
-		for (int i = 0; i < extraParams.length; i++) {
-			params.add(extraParams[i]);
-		}
+	private HttpGetBuilder getBindUrl() {
+		HttpGetBuilder getBuilder = new HttpGetBuilder(PROD_TALK_URL + "dch/bind");
 
-		params.add(new BasicNameValuePair("RID", Integer.toString(mRequestId)));
+		getBuilder.addParameter("VER", "8");
+		getBuilder.addParameter("token", mChannelId);
+		getBuilder.addParameter("gsessionid", mSessionId);
+		getBuilder.addParameter("clid", mClientId);
+		getBuilder.addParameter("prop", "data");
+		getBuilder.addParameter("zx", UUID.randomUUID().toString());
+		getBuilder.addParameter("t", "1");
+		getBuilder.addParameter("RID", mRequestId);
 		mRequestId++;
 
-		return PROD_TALK_URL + "dch/bind?VER=8&" + URLEncodedUtils.format(params, "UTF-8");
+		if (mSid != null && !mSid.isEmpty()) {
+			getBuilder.addParameter("SID", mSid);
+		}
+
+		return getBuilder;
 	}
 
 	/**
@@ -349,20 +315,26 @@ public class ChannelAPI {
 
 		mtPoll = new Thread(new Runnable() {
 			private TalkMessageParser repoll() {
-				String bindString = getBindString(new BasicNameValuePair("CI", "0"), new BasicNameValuePair("AID", Long.toString(mMessageId)),
-						new BasicNameValuePair("TYPE", "xmlhttp"), new BasicNameValuePair("RID", "rpc"));
+				HttpGetBuilder getBuilder = getBindUrl();
+				getBuilder.addParameter("CI", "0");
+				getBuilder.addParameter("AID", mMessageId);
+				getBuilder.addParameter("TYPE", "xmlhttp");
+				getBuilder.addParameter("RID", "rpc");
+				getBuilder.setCookies(mHttpSession);
 
-				HttpGet httpGet = new HttpGet(bindString);
-				HttpResponse resp = null;
+				HttpURLConnection connection = null;
+				TalkMessageParser talkMessageParser = null;
 				try {
-					resp = mHttpClient.execute(httpGet);
-					return new TalkMessageParser(resp);
-				} catch (ClientProtocolException e) {
-				} catch (IOException e) {
-				} catch (ChannelException e) {
+					connection = getBuilder.build();
+					talkMessageParser = new TalkMessageParser(connection);
+				} catch (IOException | ChannelException e) {
+					// Does nothing
+				} finally {
+					if (connection != null) {
+						connection.disconnect();
+					}
 				}
-
-				return null;
+				return talkMessageParser;
 			}
 
 			@Override
@@ -376,12 +348,12 @@ public class ChannelAPI {
 								Thread.sleep(2500);
 							} catch (InterruptedException e) {
 							}
+							continue;
 						}
 					}
 					try {
 						TalkMessage msg = parser.getMessage();
 						if (msg == null) {
-							parser.close();
 							parser = null;
 						} else {
 							handleMessage(msg);
@@ -402,6 +374,7 @@ public class ChannelAPI {
 	/**
 	 * Used each time we receive a message on the Production side, filters garbage data
 	 * from actual data
+	 * @param msg google talk message
 	 */
 	private void handleMessage(TalkMessage msg) {
 		try {
@@ -479,34 +452,17 @@ public class ChannelAPI {
 	}
 
 	/**
-	 * A helper method that consumes an HttpEntity so that the HttpClient can be reused.
-	 * If you're not planning to run on Android, you can use the non-deprecated
-	 * EntityUtils.consume() method instead.
-	 */
-	@SuppressWarnings("deprecation")
-	static void consume(HttpEntity entity) {
-		// Grab Everything
-		try {
-			if (entity != null) {
-				entity.consumeContent();
-			}
-		} catch (IOException e) {
-			// Don't Worry About
-		}
-	}
-
-	/**
 	 * Development getUrl
 	 * @param command
-	 * @return
+	 * @return development URL
 	 * @throws IOException
 	 */
 	private String getUrl(String command) throws IOException {
 		String url = mBaseUrl + CHANNEL_URL + "dev?command=" + command + "&channel=";
 
-		url += URLEncoder.encode(mChannelId, "UTF-8");
+		url += URLEncoder.encode(mChannelId, StandardCharsets.UTF_8.name());
 		if (mClientId != null) {
-			url += "&client=" + URLEncoder.encode(mClientId, "UTF-8");
+			url += "&client=" + URLEncoder.encode(mClientId, StandardCharsets.UTF_8.name());
 		}
 		return url;
 	};
@@ -540,18 +496,50 @@ public class ChannelAPI {
 	}
 
 	/**
-	 * @param xhr
+	 * @param response
 	 */
-	private void forwardMessage(HttpNiceResponse xhr) {
-		if (xhr.isSuccess()) {
-			String data = StringUtils.chomp(xhr.getResponseText());
-			if (!StringUtils.isEmpty(data)) {
+	private void forwardMessage(HttpNiceResponse response) {
+		if (response.isSuccess()) {
+			String data = chomp(response.getResponseText());
+			if (data != null && !data.isEmpty()) {
 				mChannelListener.onMessage(data);
 			}
 		} else {
-			mChannelListener.onError(xhr.getStatus(), xhr.getStatusText());
+			mChannelListener.onError(response.getStatus(), response.getStatusText());
 			setReadyState(ReadyState.ERROR);
 		}
+	}
+
+	/**
+	 * Chomp the specified message. Removing the last "\r\n", "\n", or "\r" if it's the
+	 * end of the string. Only removes the last newline.
+	 * @param message the message to chomp
+	 * @return string without newline, null if null String input
+	 */
+	private String chomp(String message) {
+		if (message == null) {
+			return null;
+		}
+
+		int length = message.length();
+		int lastIndex = length - 1;
+		int penultimateIndex = length - 2;
+		if (message.charAt(lastIndex) == '\n') {
+			// Check for "\r\n"
+			if (message.charAt(penultimateIndex) == '\r') {
+				return message.substring(0, penultimateIndex);
+			}
+			// Just '\n'
+			else {
+				return message.substring(0, lastIndex);
+			}
+		}
+		// Check for '\r'
+		else if (message.charAt(lastIndex) == '\r') {
+			return message.substring(0, lastIndex);
+		}
+
+		return message;
 	}
 
 	/**
@@ -580,11 +568,11 @@ public class ChannelAPI {
 
 	/**
 	 * Send Message On, If there is an error notify the channelListener!
-	 * @param xhr
+	 * @param response
 	 */
-	private void forwardSendComplete(HttpNiceResponse xhr) {
-		if (!xhr.isSuccess()) {
-			mChannelListener.onError(xhr.getStatus(), xhr.getStatusText());
+	private void forwardSendComplete(HttpNiceResponse response) {
+		if (!response.isSuccess()) {
+			mChannelListener.onError(response.getStatus(), response.getStatusText());
 		}
 	}
 
@@ -600,26 +588,15 @@ public class ChannelAPI {
 			return false;
 		}
 		String url = mBaseUrl + urlPattern;
-		List<NameValuePair> params = new ArrayList<NameValuePair>();
-		params.add(new BasicNameValuePair("channelKey", mApplicationKey));
-		params.add(new BasicNameValuePair("message", message));
-		forwardSendComplete(sendPost(url, params));
-		return true;
-	}
 
-	/**
-	 * Send an HTTPPOST, convenience function
-	 * @param url
-	 * @param params
-	 * @return XHR, nice responses from httpRequests
-	 * @throws IOException
-	 */
-	private HttpNiceResponse sendPost(String url, List<NameValuePair> params) throws IOException {
-		HttpClient sendClient = HttpClientBuilder.create().build();
-		UrlEncodedFormEntity entity = new UrlEncodedFormEntity(params, "UTF-8");
-		HttpPost httpPost = new HttpPost(url);
-		httpPost.setEntity(entity);
-		return new HttpNiceResponse(sendClient.execute(httpPost));
+		HttpPostBuilder postBuilder = new HttpPostBuilder(url);
+		postBuilder.addParameter("channelKey", mApplicationKey);
+		postBuilder.addParameter("message", message);
+		HttpURLConnection connection = postBuilder.build();
+		HttpNiceResponse niceResponse = new HttpNiceResponse(connection);
+		forwardSendComplete(niceResponse);
+
+		return true;
 	}
 
 	/**
@@ -630,9 +607,13 @@ public class ChannelAPI {
 	 * @throws IOException
 	 */
 	private HttpNiceResponse sendGet(String url) throws MalformedURLException, IOException {
-		HttpURLConnection connection = new HttpGetBuilder(url).build();
-		mHttpSession.connect(connection);
-		return new HttpNiceResponse(connection);
+		HttpGetBuilder getBuilder = new HttpGetBuilder(url);
+		// getBuilder.setCookies(mHttpSession);
+		HttpURLConnection connection = getBuilder.build();
+		// mHttpSession.storeInitialCookies(connection);
+		HttpNiceResponse response = new HttpNiceResponse(connection);
+		connection.disconnect();
+		return response;
 	}
 
 	/**
