@@ -41,14 +41,6 @@ public class HttpGetBuilder extends HttpParameterBuilder {
 	}
 
 	/**
-	 * Set cookies
-	 * @param cookieStorage
-	 */
-	public void setCookies(HttpCookieStorage cookieStorage) {
-		mCookies = cookieStorage.getCookies();
-	}
-
-	/**
 	 * Build the connection
 	 * @return HttpURLConnection with a GET request set
 	 * @throws IOException
@@ -57,11 +49,7 @@ public class HttpGetBuilder extends HttpParameterBuilder {
 	public HttpURLConnection build() throws MalformedURLException, IOException {
 		HttpURLConnection connection = (HttpURLConnection) new URL(mBuilder.toString()).openConnection();
 		connection.setRequestProperty("Accept-Charset", mCharset);
-
-		if (mCookies != null) {
-			connection.addRequestProperty("Cookie", mCookies);
-		}
-
+		printCookies(connection);
 		return connection;
 	}
 
@@ -72,12 +60,6 @@ public class HttpGetBuilder extends HttpParameterBuilder {
 	 * @throws MalformedURLException
 	 */
 	public HttpPostBuilder toPostBuilder() throws MalformedURLException, IOException {
-		HttpPostBuilder postBuilder = new HttpPostBuilder(this);
-		if (mCookies != null) {
-			postBuilder.setCookies(mCookies);
-		}
-		return postBuilder;
+		return new HttpPostBuilder(this);
 	}
-
-	private String mCookies = null;
 }

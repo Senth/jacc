@@ -3,8 +3,6 @@ package edu.gvsu.cis.masl.channelAPI;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 
-import org.apache.http.HttpStatus;
-
 import com.spiddekauga.net.HttpResponseParser;
 
 /**
@@ -62,7 +60,7 @@ public class HttpNiceResponse {
 	 * @return true on good connection
 	 */
 	public boolean isSuccess() {
-		return (mStatus == HttpStatus.SC_OK);
+		return (mStatus == HttpURLConnection.HTTP_OK);
 	}
 
 	/**

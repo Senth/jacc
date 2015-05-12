@@ -1,26 +1,25 @@
 package edu.gvsu.cis.masl.channelAPI;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.List;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.commons.lang.RandomStringUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.spiddekauga.net.HttpCookieStorage;
 import com.spiddekauga.net.HttpGetBuilder;
 import com.spiddekauga.net.HttpPostBuilder;
 import com.spiddekauga.net.HttpResponseParser;
 
 /**
- * API for interacating with Channels on a Google App Engine server.
+ * API for interacting with Channels on a Google App Engine server.
  * @author Jonathan Engelsma (https://github.com/jengelsma) Original author of ChannelAPI
  * @author Matteus Magnusson <matteus.magnusson@spiddekauga.com> Migrated class from
  *         Apache's HttpClient to HttpURLConnection for Android compatibility.
@@ -39,6 +38,7 @@ public class ChannelAPI {
 	private static final Integer TIMEOUT_MS = 500;
 	private static final String CHANNEL_URL = "/_ah/channel/";
 	private static final String PROD_TALK_URL = "https://talkgadget.google.com/talkgadget/";
+	private static SecureRandom mSecureRandom = new SecureRandom();
 
 	private String mBaseUrl = DEFAULT_URL;
 	private String mChannelId = null;
@@ -51,8 +51,6 @@ public class ChannelAPI {
 	private ChannelService mChannelListener = new ChannelListener();
 	private ReadyState mReadyState = ReadyState.CLOSED;
 	private Thread mtPoll = null;
-
-	private HttpCookieStorage mHttpSession = new HttpCookieStorage();
 
 	/**
 	 * Default Constructor
@@ -123,7 +121,6 @@ public class ChannelAPI {
 		HttpGetBuilder builder = new HttpGetBuilder(mBaseUrl + "/token");
 		builder.addParameter("c", key);
 		HttpURLConnection connection = builder.build();
-//		mHttpSession.storeInitialCookies(connection);
 
 		try {
 			JSONObject json = new JSONObject(HttpResponseParser.getStringResponse(connection));
@@ -167,7 +164,7 @@ public class ChannelAPI {
 
 		JSONObject xpc = new JSONObject();
 		try {
-			xpc.put("cn", RandomStringUtils.random(10, true, false));
+			xpc.put("cn", getRandomString());
 			xpc.put("tp", "null");
 			xpc.put("lpu", PROD_TALK_URL + "xpc_blank");
 			xpc.put("ppu", mBaseUrl + CHANNEL_URL + "xpc_blank");
@@ -176,15 +173,18 @@ public class ChannelAPI {
 			// Does nothing
 		}
 
-		HttpGetBuilder builder = new HttpGetBuilder(PROD_TALK_URL + "d");
-		builder.addParameter("token", mChannelId);
-		builder.addParameter("xpc", xpc.toString());
-		builder.setCookies(mHttpSession);
+		HttpGetBuilder getBuilder = new HttpGetBuilder(PROD_TALK_URL + "d");
+		getBuilder.addParameter("token", mChannelId);
+		getBuilder.addParameter("xpc", xpc.toString());
 
 		try {
-			HttpURLConnection connection = builder.build();
-			mHttpSession.storeInitialCookies(connection);
-			String response = HttpResponseParser.getStringResponse(connection);
+			HttpURLConnection connection = getBuilder.build();
+			HttpNiceResponse niceResponse = new HttpNiceResponse(connection);
+			if (niceResponse.getStatus() > 299) {
+				throw new ChannelException("Initialize failed: " + niceResponse.getStatusText());
+			}
+
+			String response = niceResponse.getResponseText();
 
 			Pattern pattern = Pattern.compile("chat\\.WcsDataClient\\(([^\\)]+)\\)", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
 			Matcher matcher = pattern.matcher(response);
@@ -223,17 +223,17 @@ public class ChannelAPI {
 	 * @throws ChannelException
 	 */
 	private void fetchSid() throws ChannelException {
-		HttpGetBuilder getBuilder = getBindUrl();
+		HttpGetBuilder getBuilder = getBindUrl(false);
 		getBuilder.addParameter("CVER", "1");
 
+		TalkMessageParser parser = null;
+		HttpURLConnection connection = null;
 		try {
 			HttpPostBuilder postBuilder = getBuilder.toPostBuilder();
-			postBuilder.setCookies(mHttpSession);
-			getBuilder = null;
 			postBuilder.addParameter("count", "0");
-			HttpURLConnection connection = postBuilder.build();
+			connection = postBuilder.build();
 
-			TalkMessageParser parser = new TalkMessageParser(connection);
+			parser = new TalkMessageParser(connection);
 			TalkMessage msg = parser.getMessage();
 
 			TalkMessage.TalkMessageEntry entry = msg.getEntries().get(0);
@@ -245,9 +245,17 @@ public class ChannelAPI {
 
 			mSid = entries.get(1).getStringValue();
 
+			parser.close();
+
 			connection.disconnect();
 
 		} catch (IOException | InvalidMessageException e) {
+			if (parser != null) {
+				parser.close();
+			}
+			if (connection != null) {
+				connection.disconnect();
+			}
 			new ChannelException(e);
 		}
 	}
@@ -257,10 +265,9 @@ public class ChannelAPI {
 	 * @throws ChannelException
 	 */
 	private void connect() throws ChannelException {
-		HttpGetBuilder getBuilder = getBindUrl();
+		HttpGetBuilder getBuilder = getBindUrl(false);
 		getBuilder.addParameter("AID", mMessageId);
 		getBuilder.addParameter("CVER", "1");
-		getBuilder.setCookies(mHttpSession);
 
 		try {
 			HttpPostBuilder postBuilder = getBuilder.toPostBuilder();
@@ -272,6 +279,8 @@ public class ChannelAPI {
 
 			HttpURLConnection connection = postBuilder.build();
 			connection.connect();
+			// Necessary for actually connecting...
+			new HttpNiceResponse(connection);
 			connection.disconnect();
 
 		} catch (IOException e) {
@@ -283,9 +292,10 @@ public class ChannelAPI {
 
 	/**
 	 * Get the URL to the "/bind" endpoint.
+	 * @param useRpc use RPC instead of request id
 	 * @return HttpGetBuilder with the appropriate GET parameters set
 	 */
-	private HttpGetBuilder getBindUrl() {
+	private HttpGetBuilder getBindUrl(boolean useRpc) {
 		HttpGetBuilder getBuilder = new HttpGetBuilder(PROD_TALK_URL + "dch/bind");
 
 		getBuilder.addParameter("VER", "8");
@@ -293,10 +303,15 @@ public class ChannelAPI {
 		getBuilder.addParameter("gsessionid", mSessionId);
 		getBuilder.addParameter("clid", mClientId);
 		getBuilder.addParameter("prop", "data");
-		getBuilder.addParameter("zx", UUID.randomUUID().toString());
+		getBuilder.addParameter("zx", getRandomString());
 		getBuilder.addParameter("t", "1");
-		getBuilder.addParameter("RID", mRequestId);
-		mRequestId++;
+
+		if (useRpc) {
+			getBuilder.addParameter("RID", "rpc");
+		} else {
+			getBuilder.addParameter("RID", mRequestId);
+			mRequestId++;
+		}
 
 		if (mSid != null && !mSid.isEmpty()) {
 			getBuilder.addParameter("SID", mSid);
@@ -314,36 +329,28 @@ public class ChannelAPI {
 		}
 
 		mtPoll = new Thread(new Runnable() {
-			private TalkMessageParser repoll() {
-				HttpGetBuilder getBuilder = getBindUrl();
+			private void repoll() {
+				HttpGetBuilder getBuilder = getBindUrl(true);
 				getBuilder.addParameter("CI", "0");
 				getBuilder.addParameter("AID", mMessageId);
 				getBuilder.addParameter("TYPE", "xmlhttp");
-				getBuilder.addParameter("RID", "rpc");
-				getBuilder.setCookies(mHttpSession);
+				// getBuilder.addParameter("RID", "rpc");
 
-				HttpURLConnection connection = null;
 				TalkMessageParser talkMessageParser = null;
 				try {
-					connection = getBuilder.build();
-					talkMessageParser = new TalkMessageParser(connection);
+					mConnection = getBuilder.build();
+					mParser = new TalkMessageParser(mConnection);
 				} catch (IOException | ChannelException e) {
 					// Does nothing
-				} finally {
-					if (connection != null) {
-						connection.disconnect();
-					}
 				}
-				return talkMessageParser;
 			}
 
 			@Override
 			public void run() {
-				TalkMessageParser parser = null;
 				while (getReadyState() == ReadyState.OPEN) {
-					if (parser == null) {
-						parser = repoll();
-						if (parser == null) {
+					if (mParser == null) {
+						repoll();
+						if (mParser == null) {
 							try {
 								Thread.sleep(2500);
 							} catch (InterruptedException e) {
@@ -352,19 +359,39 @@ public class ChannelAPI {
 						}
 					}
 					try {
-						TalkMessage msg = parser.getMessage();
+						TalkMessage msg = mParser.getMessage();
 						if (msg == null) {
-							parser = null;
+							mParser.close();
+							mParser = null;
+							mConnection.disconnect();
+							mConnection = null;
 						} else {
 							handleMessage(msg);
 						}
 					} catch (ChannelException e) {
 						mChannelListener.onError(500, e.getMessage());
 
+						// Close the connection.
+						// TODO try to connect again?
+						try {
+							close();
+						} catch (IOException e1) {
+							// Does nothing
+						}
 						return;
 					}
 				}
+
+				if (mParser != null) {
+					mParser.close();
+				}
+				if (mConnection != null) {
+					mConnection.disconnect();
+				}
 			}
+
+			private TalkMessageParser mParser = null;
+			private HttpURLConnection mConnection = null;
 		});
 
 		setReadyState(ReadyState.OPEN);
@@ -608,9 +635,7 @@ public class ChannelAPI {
 	 */
 	private HttpNiceResponse sendGet(String url) throws MalformedURLException, IOException {
 		HttpGetBuilder getBuilder = new HttpGetBuilder(url);
-		// getBuilder.setCookies(mHttpSession);
 		HttpURLConnection connection = getBuilder.build();
-		// mHttpSession.storeInitialCookies(connection);
 		HttpNiceResponse response = new HttpNiceResponse(connection);
 		connection.disconnect();
 		return response;
@@ -624,6 +649,13 @@ public class ChannelAPI {
 		if (channelListener != null) {
 			mChannelListener = channelListener;
 		}
+	}
+
+	/**
+	 * @return randomized string
+	 */
+	private String getRandomString() {
+		return new BigInteger(130, mSecureRandom).toString(32);
 	}
 
 	/**

@@ -1,8 +1,10 @@
 package com.spiddekauga.net;
 
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Logger;
 
 /**
  * Builds HTTP GET and POST parameters.
@@ -82,6 +84,25 @@ class HttpParameterBuilder {
 		mCharset = charset;
 	}
 
+	// REMOVE
+	protected void printCookies(HttpURLConnection connection) {
+
+
+		// StringBuilder stringBuilder = new StringBuilder();
+		// try {
+		// URI uri = connection.getURL().toURI();
+		// stringBuilder.append("URL: " + uri + "\n");
+		// stringBuilder.append(CookieHandler.getDefault().get(uri, new HashMap<String,
+		// List<String>>()));
+		// } catch (IOException | URISyntaxException e) {
+		// e.printStackTrace();
+		// }
+		//
+		// mLogger.info(stringBuilder.toString());
+	}
+
+	// REMOVE
+	protected Logger mLogger = Logger.getLogger(getClass().getSimpleName());
 	/** Added parameter */
 	protected boolean mAddedParameter = false;
 	/** Charset the parameters are encoded into */

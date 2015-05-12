@@ -265,28 +265,6 @@ public class HttpPostBuilder extends HttpParameterBuilder {
 	}
 
 	/**
-	 * Set cookies
-	 * @param cookieStorage
-	 * @throws IllegalStateException if parameters have been added already
-	 */
-	public void setCookies(HttpCookieStorage cookieStorage) {
-		setCookies(cookieStorage.getCookies());
-	}
-
-	/**
-	 * Set cookies
-	 * @param cookies
-	 * @throws IllegalStateException if parameters have been added already
-	 */
-	void setCookies(String cookies) {
-		if (mOutput == null) {
-			mConnection.addRequestProperty("Cookie", cookies);
-		} else {
-			throw new IllegalStateException("Output of parameters has already been started");
-		}
-	}
-
-	/**
 	 * Finalizes the connection. Call getInputStream() on the HttpURLConnection to
 	 * connect.
 	 * @return a HttpURLConnection ready to make a connection and receive a response
@@ -302,6 +280,8 @@ public class HttpPostBuilder extends HttpParameterBuilder {
 		} else {
 			mWriter.append("--").append(mBoundary).append("--").append(CRLF).flush();
 		}
+
+		printCookies(mConnection);
 
 		return mConnection;
 	}

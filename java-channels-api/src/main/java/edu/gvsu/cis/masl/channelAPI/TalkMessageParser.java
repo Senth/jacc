@@ -54,15 +54,13 @@ class TalkMessageParser {
 				throw new ChannelException(e);
 			}
 
-			close();
 			return msg;
 		} catch (ChannelException e) {
-			close();
 			throw e;
 		}
 	}
 
-	private void close() {
+	public void close() {
 		try {
 			mReader.close();
 		} catch (IOException e) {
