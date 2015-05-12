@@ -4,6 +4,7 @@ allprojects {
 	group = 'edu.gvsu.cis.masl'
 
 	repositories {
+		mavenLocal()
 		mavenCentral()
 	}
 }

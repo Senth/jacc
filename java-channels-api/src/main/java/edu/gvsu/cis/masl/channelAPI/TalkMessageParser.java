@@ -60,6 +60,9 @@ class TalkMessageParser {
 		}
 	}
 
+	/**
+	 * Close the stream
+	 */
 	public void close() {
 		try {
 			mReader.close();

@@ -14,9 +14,9 @@ import java.util.regex.Pattern;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.spiddekauga.net.HttpGetBuilder;
-import com.spiddekauga.net.HttpPostBuilder;
-import com.spiddekauga.net.HttpResponseParser;
+import com.spiddekauga.http.HttpGetBuilder;
+import com.spiddekauga.http.HttpPostBuilder;
+import com.spiddekauga.http.HttpResponseParser;
 
 /**
  * API for interacting with Channels on a Google App Engine server.
@@ -336,7 +336,6 @@ public class ChannelAPI {
 				getBuilder.addParameter("TYPE", "xmlhttp");
 				// getBuilder.addParameter("RID", "rpc");
 
-				TalkMessageParser talkMessageParser = null;
 				try {
 					mConnection = getBuilder.build();
 					mParser = new TalkMessageParser(mConnection);

@@ -3,7 +3,7 @@ package edu.gvsu.cis.masl.channelAPI;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 
-import com.spiddekauga.net.HttpResponseParser;
+import com.spiddekauga.http.HttpResponseParser;
 
 /**
  * Nice wrapper for HTTP responses
