@@ -78,6 +78,7 @@ public class ChannelAPI {
 	public ChannelAPI(String URL, String channelKey, ChannelService channelService) throws IOException {
 		mClientId = null;
 		mBaseUrl = URL;
+		fixBaseUrl();
 		mRequestId = 0;
 		mMessageId = 1;
 		mChannelId = createChannel(channelKey);
@@ -100,12 +101,22 @@ public class ChannelAPI {
 	public void joinChannel(String URL, String token, ChannelService channelService) {
 		mClientId = null;
 		mBaseUrl = URL;
+		fixBaseUrl();
 		mChannelId = token;
 
 
 		mApplicationKey = mChannelId.substring(mChannelId.lastIndexOf("-") + 1);
 		if (mChannelListener != null) {
 			mChannelListener = channelService;
+		}
+	}
+
+	/**
+	 * Remove trailing slash from base URL
+	 */
+	private void fixBaseUrl() {
+		if (mBaseUrl != null && !mBaseUrl.isEmpty() && mBaseUrl.charAt(mBaseUrl.length() - 1) == '/') {
+			mBaseUrl = mBaseUrl.substring(0, mBaseUrl.length() - 1);
 		}
 	}
 
