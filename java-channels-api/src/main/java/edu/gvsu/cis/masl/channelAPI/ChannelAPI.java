@@ -184,11 +184,11 @@ public class ChannelAPI {
 			// Does nothing
 		}
 
-		HttpGetBuilder getBuilder = new HttpGetBuilder(PROD_TALK_URL + "d");
-		getBuilder.addParameter("token", mChannelId);
-		getBuilder.addParameter("xpc", xpc.toString());
-
 		try {
+			HttpGetBuilder getBuilder = new HttpGetBuilder(PROD_TALK_URL + "d");
+			getBuilder.addParameter("token", mChannelId);
+			getBuilder.addParameter("xpc", xpc.toString());
+
 			HttpURLConnection connection = getBuilder.build();
 			HttpNiceResponse niceResponse = new HttpNiceResponse(connection);
 			if (niceResponse.getStatus() > 299) {
@@ -234,12 +234,13 @@ public class ChannelAPI {
 	 * @throws ChannelException
 	 */
 	private void fetchSid() throws ChannelException {
-		HttpGetBuilder getBuilder = getBindUrl(false);
-		getBuilder.addParameter("CVER", "1");
 
 		TalkMessageParser parser = null;
 		HttpURLConnection connection = null;
 		try {
+			HttpGetBuilder getBuilder = getBindUrl(false);
+			getBuilder.addParameter("CVER", "1");
+
 			HttpPostBuilder postBuilder = getBuilder.toPostBuilder();
 			postBuilder.addParameter("count", "0");
 			connection = postBuilder.build();
@@ -276,11 +277,12 @@ public class ChannelAPI {
 	 * @throws ChannelException
 	 */
 	private void connect() throws ChannelException {
-		HttpGetBuilder getBuilder = getBindUrl(false);
-		getBuilder.addParameter("AID", mMessageId);
-		getBuilder.addParameter("CVER", "1");
-
 		try {
+			HttpGetBuilder getBuilder = getBindUrl(false);
+			getBuilder.addParameter("AID", mMessageId);
+			getBuilder.addParameter("CVER", "1");
+
+
 			HttpPostBuilder postBuilder = getBuilder.toPostBuilder();
 			postBuilder.addParameter("count", "1");
 			postBuilder.addParameter("ofs", "0");
@@ -305,8 +307,9 @@ public class ChannelAPI {
 	 * Get the URL to the "/bind" endpoint.
 	 * @param useRpc use RPC instead of request id
 	 * @return HttpGetBuilder with the appropriate GET parameters set
+	 * @throws IOException
 	 */
-	private HttpGetBuilder getBindUrl(boolean useRpc) {
+	private HttpGetBuilder getBindUrl(boolean useRpc) throws IOException {
 		HttpGetBuilder getBuilder = new HttpGetBuilder(PROD_TALK_URL + "dch/bind");
 
 		getBuilder.addParameter("VER", "8");
@@ -341,13 +344,13 @@ public class ChannelAPI {
 
 		mtPoll = new Thread(new Runnable() {
 			private void repoll() {
-				HttpGetBuilder getBuilder = getBindUrl(true);
-				getBuilder.addParameter("CI", "0");
-				getBuilder.addParameter("AID", mMessageId);
-				getBuilder.addParameter("TYPE", "xmlhttp");
-				// getBuilder.addParameter("RID", "rpc");
-
 				try {
+					HttpGetBuilder getBuilder = getBindUrl(true);
+					getBuilder.addParameter("CI", "0");
+					getBuilder.addParameter("AID", mMessageId);
+					getBuilder.addParameter("TYPE", "xmlhttp");
+					// getBuilder.addParameter("RID", "rpc");
+
 					mConnection = getBuilder.build();
 					mParser = new TalkMessageParser(mConnection);
 				} catch (IOException | ChannelException e) {

@@ -94,13 +94,27 @@ class TalkMessage {
 			} else if (ch == '\"' || ch == '\'') {
 				String stringValue = parseStringValue(reader, (char) ch);
 				entries.add(new TalkMessageEntry(MessageEntryKind.ME_STRING, stringValue));
-			} else if (ch == ',') {
-				// blank entry
+			}
+			// Blank entry
+			else if (ch == ',') {
 				entries.add(new TalkMessageEntry(MessageEntryKind.ME_EMPTY, null));
-			} else {
-				// we assume it's a number
-				long numValue = parseNumberValue(reader, (char) ch);
-				entries.add(new TalkMessageEntry(MessageEntryKind.ME_NUMBER, numValue));
+			}
+			// Null entry
+			else if (ch == 'n') {
+				entries.add(new TalkMessageEntry(MessageEntryKind.ME_EMPTY, null));
+				ch = skipToNextEntry(reader);
+			}
+			// Assume it's a number
+			else {
+				try {
+					long numValue = parseNumberValue(reader, (char) ch);
+					entries.add(new TalkMessageEntry(MessageEntryKind.ME_NUMBER, numValue));
+				}
+				// Wasn't a number, add blank entry
+				catch (NumberFormatException e) {
+					entries.add(new TalkMessageEntry(MessageEntryKind.ME_EMPTY, null));
+					ch = skipToNextEntry(reader);
+				}
 			}
 
 			// We expect a comma next, or the end of the message
@@ -153,6 +167,22 @@ class TalkMessage {
 			ch = reader.read();
 		}
 		return -1;
+	}
+
+	/**
+	 * Skip to the next entry
+	 * @param reader
+	 * @return -1 if buffer ended, ',' if another entry exist, ']' if this entry ended.
+	 * @throws IOException
+	 */
+	private static int skipToNextEntry(BufferedReader reader) throws IOException {
+		while (true) {
+			int ch = reader.read();
+
+			if (ch == -1 || ch == ',' || ch == ']') {
+				return ch;
+			}
+		}
 	}
 
 	/**

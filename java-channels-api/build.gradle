@@ -27,7 +27,7 @@ sourceSets {
 }
 
 dependencies {
-	compile 'com.spiddekauga.http:http-url-utils:0.1'
+	compile 'com.spiddekauga.http:http-url-utils:0.2.2'
 	compile 'org.json:json:20090211'
 	deployerJars 'org.apache.maven.wagon:wagon-ssh:2.2'
 }
