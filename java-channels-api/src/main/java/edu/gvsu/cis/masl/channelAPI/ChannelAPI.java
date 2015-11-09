@@ -40,6 +40,7 @@ public class ChannelAPI {
 	private static final String PROD_TALK_URL = "https://talkgadget.google.com/talkgadget/";
 	private static SecureRandom mSecureRandom = new SecureRandom();
 
+	private boolean mProduction = false;
 	private String mBaseUrl = DEFAULT_URL;
 	private String mChannelId = null;
 	private String mApplicationKey = null;
@@ -87,6 +88,8 @@ public class ChannelAPI {
 		if (mChannelListener != null) {
 			mChannelListener = channelService;
 		}
+
+		calculateProductionOrLocalDevelopmentUrl();
 	}
 
 	/**
@@ -109,6 +112,30 @@ public class ChannelAPI {
 		if (mChannelListener != null) {
 			mChannelListener = channelService;
 		}
+
+		calculateProductionOrLocalDevelopmentUrl();
+	}
+
+	/**
+	 * Automatically calculates whether this is a production or local development instance
+	 */
+	private void calculateProductionOrLocalDevelopmentUrl() {
+		setProduction(mBaseUrl.contains("localhost"));
+	}
+
+	/**
+	 * Sets whether this is a production or local development
+	 * @param production true if production, false if local development
+	 */
+	public void setProduction(boolean production) {
+		mProduction = production;
+	}
+
+	/**
+	 * @return true if the connection is production, false if it's local development
+	 */
+	public boolean isProduction() {
+		return mProduction;
 	}
 
 	/**
@@ -154,16 +181,16 @@ public class ChannelAPI {
 	public void open() throws IOException, ChannelException {
 		setReadyState(ReadyState.CONNECTING);
 
-		// Local Development Mode
-		if (mBaseUrl.contains("localhost")) {
-			connect(sendGet(getUrl("connect")));
-		}
 		// Production - AppEngine Mode
-		else {
+		if (isProduction()) {
 			initialize();
 			fetchSid();
 			connect();
 			longPoll();
+		}
+		// Local Development Mode
+		else {
+			connect(sendGet(getUrl("connect")));
 		}
 	}
 
@@ -487,8 +514,13 @@ public class ChannelAPI {
 	 * @throws IOException
 	 */
 	public void close() throws IOException {
-		setReadyState(ReadyState.CLOSING);
-		disconnect(sendGet(getUrl("disconnect")));
+		if (isProduction()) {
+			setReadyState(ReadyState.CLOSED);
+			mChannelListener.onClose();
+		} else {
+			setReadyState(ReadyState.CLOSING);
+			disconnect(sendGet(getUrl("disconnect")));
+		}
 	}
 
 	/**
