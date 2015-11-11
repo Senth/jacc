@@ -120,7 +120,7 @@ public class ChannelAPI {
 	 * Automatically calculates whether this is a production or local development instance
 	 */
 	private void calculateProductionOrLocalDevelopmentUrl() {
-		setProduction(mBaseUrl.contains("localhost"));
+		setProduction(!mBaseUrl.contains("localhost"));
 	}
 
 	/**
